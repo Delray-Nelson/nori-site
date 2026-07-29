@@ -145,6 +145,7 @@ function Home({ go, onOrderNori, onOrderEmet }) {
   return (
     <>
       <section className="hero">
+        <div className="hero-inner">
         <div className="hero-in">
           <p className="eyebrow">Now turning over a new leaf</p>
           <h1 className="h1 hero-h1">Neighborhood market — $6.00<br />Freshly Made Subs</h1>
@@ -169,6 +170,7 @@ function Home({ go, onOrderNori, onOrderEmet }) {
             <img className="hero-sub" src={SUB_IMG} alt="Nori's Market freshly made sub" />
             <div className="hero-badge" aria-hidden><span className="cur">$</span>6</div>
           </div>
+        </div>
         </div>
       </section>
 
@@ -508,6 +510,8 @@ function OrderModal({ open, onClose, vendor }) {
 
 const css = `
 @import url('https://fonts.googleapis.com/css2?family=Anton&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&display=swap');
+html,body{margin:0;padding:0;}
+#root{overflow-x:clip;}
 .nm{
   --nori:#163a2b;--nori-900:#0e2a1f;--nori-700:#1e4a37;
   --leaf:#82ab3d;--leaf-deep:#5f8a2a;--citrus:#f2a63b;--tomato:#e04a2c;
@@ -568,7 +572,8 @@ const css = `
 
 /* hero */
 .hero{background:radial-gradient(120% 120% at 85% -10%,rgba(130,171,61,.18),transparent 55%),var(--nori);
-  color:var(--foam);padding:clamp(3rem,7vw,5.5rem) clamp(1rem,4vw,2.5rem);
+  color:var(--foam);padding:clamp(3rem,7vw,5.5rem) 0;}
+.hero-inner{max-width:1120px;margin:0 auto;padding:0 clamp(1rem,4vw,2.5rem);
   display:grid;grid-template-columns:1.05fr .95fr;gap:2rem;align-items:center;}
 .hero-in{max-width:640px;}
 .lede{font-size:clamp(1.02rem,1.5vw,1.2rem);color:rgba(247,243,233,.86);margin:0 0 .4rem;max-width:46ch;}
@@ -705,7 +710,7 @@ const css = `
   .nav.open{display:flex;}
   .nav a{padding:.7rem .2rem;border-bottom:1px solid rgba(22,58,43,.08);}
   .nav-cta{text-align:center;margin-top:.5rem;}
-  .hero{grid-template-columns:1fr;}
+  .hero-inner{grid-template-columns:1fr;}
   .hero-in{text-align:center;}
   .hero-in .lede{margin-left:auto;margin-right:auto;}
   .hero-in .row{flex-direction:column;align-items:stretch;}
