@@ -1,13 +1,9 @@
 import React, { useState, useRef, useEffect } from "react";
 
 // survey.nori-market.shop — community menu survey
-// Flow: intro -> 10 questions -> contact capture -> 20%-off ticket
-// Backend wiring lives in ONE place (submitResponses) — see the comment there.
-
 const BRAND = "Nori's Market";
 
 // Set VITE_API_URL in Amplify (Environment variables) or a local .env file.
-// Falls back to the placeholder in this preview.
 const API_URL =
   import.meta.env?.VITE_API_URL ||
   "https://cms.nori-market.shop/wp-json/nori/v1/survey";
@@ -15,7 +11,9 @@ const API_URL =
 // The page the QR opens when staff scan it (hosted on your WordPress domain).
 const STAFF_SCANNER_URL = "https://cms.nori-market.shop/staff-scanner.html";
 
+// Integrated questions array — feel free to modify or add options directly here!
 const QUESTIONS = [
+  // SECTION 1: CORE BRAND & SANDWICH BUILDER
   {
     key: "appeal",
     type: "scale",
@@ -24,86 +22,147 @@ const QUESTIONS = [
     ends: ["Meh", "Take my money"],
   },
   {
-    key: "subs",
+    key: "sub_bread",
+    type: "chips",
+    title: "What bread base would you build on?",
+    hint: "Tap your main choice.",
+    options: ["Italian White", "Honey Oat", "Whole Wheat", "Gluten-Free Wrap", "Brioche Sub Roll"],
+  },
+  {
+    key: "sub_protein",
     type: "multi",
-    title: "Which subs would you actually order?",
+    title: "Which sub proteins would you actually order?",
     hint: "Tap as many as you like.",
-    options: ["Italian", "Turkey & herb", "Roast beef", "Ham & cheese",
-      "Meatball parm", "Buffalo chicken", "Chicken caesar", "BLT",
-      "Tuna", "Veggie", "Vegan / plant-based"],
+    options: [
+      "Smoked Turkey", "Roast Beef", "Salami & Pepperoni", "Tuna Salad",
+      "Chicken Cutlet", "Plant-Based Chickpea", "Vegan Deli Slices", "Meatballs"
+    ],
     other: true,
+  },
+  {
+    key: "sub_cheese",
+    type: "chips",
+    title: "Favorite cheese to melt on top?",
+    options: ["Provolone", "Swiss", "Sharp Cheddar", "Pepper Jack", "Vegan Cheese", "No Cheese"],
+  },
+  {
+    key: "sub_veggies",
+    type: "multi",
+    title: "Which veggies and crunch factors do you need?",
+    hint: "Tap all that apply.",
+    options: [
+      "Shredded Lettuce", "Sliced Tomatoes", "Red Onions", "Pickles",
+      "Jalapeños", "Banana Peppers", "Baby Spinach", "Black Olives", "Cucumbers"
+    ],
+  },
+  {
+    key: "sub_sauce",
+    type: "multi",
+    title: "Sauce & drizzle preference?",
+    options: [
+      "House Herb Vinaigrette", "Spicy Mayo", "Garlic Aioli", "Honey Mustard",
+      "Hot Honey", "Oil & Vinegar", "Ranch", "Chipotle Mayo"
+    ],
+    other: true,
+  },
+  {
+    key: "sub_toasted",
+    type: "single",
+    title: "How do you like your sub served?",
+    options: ["Warm & Extra Toasted", "Lightly Warmed", "Cold / Fresh Cut"],
+  },
+  {
+    key: "sub_custom_name",
+    type: "text",
+    title: "Name your dream signature $6 sub creation",
+    hint: "Optional — go wild. The kitchen team reads these!",
+    placeholder: "e.g. The Tara Blvd Spicy Stack…",
+    optional: true,
   },
   {
     key: "smoothies",
     type: "multi",
-    title: "And which smoothies sound good?",
-    options: ["Mango", "Strawberry banana", "Mixed berry", "Green (spinach/kale)",
-      "Tropical / pineapple", "Peanut butter banana", "Coffee / mocha",
-      "Protein", "Açaí bowl-style"],
+    title: "Which real-fruit smoothies sound best to pair with it?",
+    options: [
+      "Mango Passion", "Strawberry Banana", "Wild Berry Blast", "Green Detox (Spinach/Kale)",
+      "Tropical Pineapple", "Peanut Butter Banana", "Cold Brew Mocha", "Protein Power"
+    ],
+    other: true,
+  },
+
+  // SECTION 2: LOCAL FARMERS' MARKET INTEREST
+  {
+    key: "farmer_appeal",
+    type: "scale",
+    title: "How appealing is a weekly Farmers' Market at Nori's?",
+    hint: "1 = Not interested · 5 = Would shop weekly",
+    ends: ["Not interested", "Would shop weekly"],
+  },
+  {
+    key: "farmer_goods",
+    type: "multi",
+    title: "Which local farm goods would bring you out?",
+    hint: "Select everything you'd buy locally.",
+    options: [
+      "Organic Produce & Greens", "Fresh Farm Eggs", "Local Honey & Jams",
+      "Artisanal Fresh Breads", "Handcrafted Soaps & Body Care", "Fresh Cut Flowers", "Herbal Teas"
+    ],
     other: true,
   },
   {
-    key: "diet",
-    type: "multi",
-    title: "Any dietary needs we should nail?",
-    hint: "So there's always something for you.",
-    options: ["Vegan", "Vegetarian", "Gluten-free", "Dairy-free",
-      "High-protein", "Keto / low-carb", "No restrictions"],
-  },
-  {
-    key: "price6",
+    key: "farmer_freq",
     type: "single",
-    title: "We're planning $6 flat for subs and smoothies. That feels…",
-    options: ["A great deal", "Fair", "A little high", "Too expensive"],
+    title: "How often would you stop by the Farmers' Market?",
+    options: ["Every Weekend", "Twice a Month", "Once a Month", "Occasionally"],
+  },
+
+  // SECTION 3: COMMUNITY CART-SHARE (BULK ORGANIC GROCERIES)
+  {
+    key: "cartshare_appeal",
+    type: "scale",
+    title: "Interest in 'Community Cart-Share' bulk wholesale orders?",
+    hint: "Group up with neighbors to order organic staples at wholesale pricing (1 = Meh, 5 = Love it)",
+    ends: ["Meh", "Love it"],
   },
   {
-    key: "priceExpect",
+    key: "cartshare_group",
     type: "chips",
-    title: "What do you usually pay for a good sub elsewhere?",
-    hint: "Roughly — just a gut check.",
-    options: ["$5", "$6", "$7", "$8", "$9", "$10+"],
+    title: "Who would you group-buy or share a cart with?",
+    options: ["Neighbors / Block", "Coworkers", "Family / Friends", "Church / Civic Group", "Just Myself"],
   },
+  {
+    key: "cartshare_organizer",
+    type: "single",
+    title: "Would you be open to organizing a neighborhood cart group?",
+    hint: "Organizers get extra perks & discounts on their family grocery orders.",
+    options: ["Yes, sign me up as a host!", "Maybe, tell me more", "No, just want to participate"],
+  },
+
+  // SECTION 4: FREQUENCY & EXTRAS
   {
     key: "frequency",
     type: "single",
-    title: "How often would you grab something from us?",
-    options: ["A few times a week", "About once a week", "A few times a month",
-      "Once in a while", "Just trying it out"],
-  },
-  {
-    key: "dayparts",
-    type: "multi",
-    title: "When would you most likely stop by?",
-    options: ["Breakfast", "Lunch", "After school / work", "Dinner",
-      "Late night", "Weekends"],
+    title: "Overall, how often will you visit Nori's Market?",
+    options: ["A few times a week", "About once a week", "A few times a month", "Just trying it out"],
   },
   {
     key: "extras",
     type: "multi",
     title: "What else would make you a regular?",
-    hint: "Foods or services you'd love to see.",
-    options: ["Rewards / loyalty", "Online ordering", "Delivery", "Catering",
-      "Coffee & espresso", "Breakfast items", "Fresh salads", "Grain bowls",
-      "Wraps", "Kids options", "Outdoor seating", "Late hours"],
+    options: [
+      "Rewards / Loyalty Points", "Online Pre-Ordering", "Local Delivery",
+      "Notary & Mobile Drop-off", "Breakfast Items", "Outdoor Seating", "Late Hours"
+    ],
     other: true,
-  },
-  {
-    key: "dream",
-    type: "text",
-    title: "Dream sub or smoothie you wish existed?",
-    hint: "Optional — go wild. The kitchen reads these.",
-    placeholder: "e.g. a spicy Italian with hot honey…",
-    optional: true,
   },
 ];
 
 const TOTAL = QUESTIONS.length;
 
 export default function NoriSurvey() {
-  // step: -1 intro, 0..TOTAL-1 questions, TOTAL capture, TOTAL+1 done
   const [step, setStep] = useState(-1);
   const [answers, setAnswers] = useState({});
-  const [contact, setContact] = useState({ name: "", email: "", area: "", updates: true });
+  const [contact, setContact] = useState({ name: "", email: "", area: "", phone: "", updates: true });
   const [emailErr, setEmailErr] = useState("");
   const [code, setCode] = useState("");
   const topRef = useRef(null);
@@ -122,11 +181,9 @@ export default function NoriSurvey() {
 
   const next = () => setStep((s) => s + 1);
   const back = () => setStep((s) => Math.max(-1, s - 1));
-  const pick = (k, v) => { setAnswer(k, v); setTimeout(next, 220); }; // auto-advance
+  const pick = (k, v) => { setAnswer(k, v); setTimeout(next, 220); };
 
   async function submitResponses() {
-    // Optimistic local code so the ticket always renders — even in this preview
-    // or if the network hiccups. The server's code wins when it responds.
     let gen = "NORI-" + Math.random().toString(36).slice(2, 6).toUpperCase();
     try {
       const res = await fetch(API_URL, {
@@ -136,10 +193,10 @@ export default function NoriSurvey() {
       });
       if (res.ok) {
         const data = await res.json();
-        if (data && data.code) gen = data.code; // real coupon from Epos Now flow
+        if (data && data.code) gen = data.code;
       }
     } catch (e) {
-      // offline / preview — keep the local code
+      // preview fallback
     }
     setCode(gen);
     next();
@@ -147,9 +204,6 @@ export default function NoriSurvey() {
 
   const q = step >= 0 && step < TOTAL ? QUESTIONS[step] : null;
 
-  // QR encodes a link to the staff page with the code as a query param.
-  // A hosted image API keeps this dependency-free; see the learning notes for
-  // how to swap in a local QR library for full offline/privacy.
   const redeemUrl = `${STAFF_SCANNER_URL}?code=${encodeURIComponent(code)}`;
   const qrSrc =
     "https://api.qrserver.com/v1/create-qr-code/?size=240x240&margin=10&data=" +
@@ -165,7 +219,7 @@ export default function NoriSurvey() {
       />
       <style>{styles}</style>
 
-      {/* top bar */}
+      {/* Top Header — Full edge-to-edge */}
       <header className="sv-top">
         <span className="sv-brand"><span className="sv-brand-mark">◍</span>{BRAND}</span>
         {step >= 0 && step < TOTAL && (
@@ -178,6 +232,7 @@ export default function NoriSurvey() {
         </div>
       )}
 
+      {/* Main Container — Spans 100% width without body margin */}
       <main className="sv-main">
         {/* INTRO */}
         {step === -1 && (
@@ -201,7 +256,7 @@ export default function NoriSurvey() {
         {/* QUESTIONS */}
         {q && (
           <section className="sv-card">
-            <p className="sv-qmeta">Question {step + 1}</p>
+            <p className="sv-qmeta">Question {step + 1} of {TOTAL}</p>
             <h2 className="sv-qtitle" tabIndex={-1} ref={topRef}>{q.title}</h2>
             {q.hint && <p className="sv-hint">{q.hint}</p>}
 
@@ -314,20 +369,24 @@ export default function NoriSurvey() {
             <input className="sv-input" value={contact.name}
               onChange={(e) => setContact({ ...contact, name: e.target.value })} placeholder="First name" />
 
-            <label className="sv-label">Email</label>
+            <label className="sv-label">Email *</label>
             <input className={"sv-input" + (emailErr ? " err" : "")} type="email" value={contact.email}
               onChange={(e) => { setContact({ ...contact, email: e.target.value }); setEmailErr(""); }}
               placeholder="you@email.com" />
             {emailErr && <p className="sv-err-msg">{emailErr}</p>}
 
+            <label className="sv-label">Phone (For SMS Drop Alerts) <span className="sv-opt-tag">optional</span></label>
+            <input className="sv-input" type="tel" value={contact.phone}
+              onChange={(e) => setContact({ ...contact, phone: e.target.value })} placeholder="(404) 555-0199" />
+
             <label className="sv-label">Neighborhood <span className="sv-opt-tag">optional</span></label>
             <input className="sv-input" value={contact.area}
-              onChange={(e) => setContact({ ...contact, area: e.target.value })} placeholder="e.g. West End" />
+              onChange={(e) => setContact({ ...contact, area: e.target.value })} placeholder="e.g. Jonesboro / Tara Blvd" />
 
             <label className="sv-check">
               <input type="checkbox" checked={contact.updates}
                 onChange={(e) => setContact({ ...contact, updates: e.target.checked })} />
-              <span>Keep me posted on the opening and specials.</span>
+              <span>Keep me posted on partner drops and specials.</span>
             </label>
 
             <button className="sv-btn sv-btn-tomato sv-btn-block sv-btn-lg" onClick={() => {
@@ -343,10 +402,10 @@ export default function NoriSurvey() {
         {step === TOTAL + 1 && (
           <section className="sv-card sv-done">
             <p className="sv-eyebrow" tabIndex={-1} ref={topRef}>You're on the list</p>
-            <h2 className="sv-h1 sv-done-h1">Thanks for shaping the menu.</h2>
+            <h2 className="sv-h1 sv-done-h1">Thanks for shaping Nori's Market.</h2>
             <p className="sv-lede sv-done-lede">
               Here's your ticket. We'll email a copy{contact.name ? `, ${contact.name}` : ""} —
-              show it at the counter on opening week.
+              show it at the counter or use it online when we launch!
             </p>
 
             <div className="sv-ticket">
@@ -378,18 +437,26 @@ export default function NoriSurvey() {
               <p className="sv-qr-cap">Scan at the counter — or show code <b>{code}</b></p>
             </div>
 
-            <p className="sv-done-note">One ticket per person · redeemable at opening · subs &amp; smoothies $6</p>
+            <p className="sv-done-note">One ticket per person · redeemable at opening · $6 subs &amp; smoothies</p>
           </section>
         )}
       </main>
 
-      <footer className="sv-foot">{BRAND} · community menu survey</footer>
+      <footer className="sv-foot">{BRAND} · neighborhood marketplace &amp; cafe network</footer>
     </div>
   );
 }
 
 const styles = `
 @import url('https://fonts.googleapis.com/css2?family=Anton&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&display=swap');
+
+/* Force HTML and Body to 0 margin/padding to flush completely against the viewport */
+html, body {
+  margin: 0 !important;
+  padding: 0 !important;
+  width: 100% !important;
+  overflow-x: hidden !important;
+}
 
 .sv-root{
   --nori:#163a2b;--nori-900:#0e2a1f;--nori-700:#1e4a37;
@@ -400,39 +467,44 @@ const styles = `
   font-family:var(--body);color:var(--ink);background:var(--paper);
   font-synthesis:none;min-height:100vh;min-height:100dvh;line-height:1.5;-webkit-font-smoothing:antialiased;
   display:flex;flex-direction:column;
+  width:100vw;margin:0;padding:0;
 }
 .sv-root *{box-sizing:border-box;}
 .sv-root button{font-family:inherit;cursor:pointer;}
 
 .sv-top{
   display:flex;align-items:center;justify-content:space-between;
-  padding:.9rem 1.1rem;background:var(--nori);color:var(--foam);
+  padding:1rem 1.5rem;background:var(--nori);color:var(--foam);
+  width:100%;box-sizing:border-box;
 }
-.sv-brand{font-family:var(--display);font-weight:800;font-size:1.25rem;letter-spacing:.02em;
+.sv-brand{font-family:var(--display);font-weight:800;font-size:1.35rem;letter-spacing:.02em;
   text-transform:uppercase;display:flex;align-items:center;gap:.4rem;}
 .sv-brand-mark{color:var(--leaf);font-family:var(--body);}
-.sv-count{font-weight:700;font-size:.82rem;color:rgba(247,243,233,.75);letter-spacing:.05em;}
-.sv-progress{height:5px;background:var(--paper-2);}
+.sv-count{font-weight:700;font-size:.85rem;color:rgba(247,243,233,.75);letter-spacing:.05em;}
+.sv-progress{height:6px;background:var(--paper-2);width:100%;}
 .sv-progress-bar{height:100%;background:var(--citrus);transition:width .3s ease;}
 
-.sv-main{flex:1;display:flex;justify-content:center;padding:1.2rem 1rem 2rem;}
-.sv-card{width:100%;max-width:560px;}
+.sv-main{
+  flex:1;display:flex;justify-content:center;
+  padding:2rem 1.5rem 3rem;width:100%;box-sizing:border-box;
+}
+.sv-card{width:100%;max-width:720px;}
 
-.sv-eyebrow{font-weight:700;font-size:.74rem;letter-spacing:.16em;text-transform:uppercase;
+.sv-eyebrow{font-weight:700;font-size:.78rem;letter-spacing:.16em;text-transform:uppercase;
   color:var(--leaf-deep);margin:.4rem 0 .8rem;}
 .sv-h1{font-family:var(--display);font-weight:800;text-transform:uppercase;
-  font-size:clamp(2rem,7vw,3rem);line-height:.96;color:var(--nori);margin:0 0 1rem;outline:none;}
-.sv-lede{font-size:1.05rem;color:#3d4a3f;margin:0 0 1.3rem;}
+  font-size:clamp(2.2rem,8vw,3.6rem);line-height:.96;color:var(--nori);margin:0 0 1rem;outline:none;}
+.sv-lede{font-size:1.1rem;color:#3d4a3f;margin:0 0 1.4rem;line-height:1.5;}
 .sv-lede b{color:var(--nori);}
-.sv-facts{list-style:none;display:flex;flex-wrap:wrap;gap:.5rem;padding:0;margin:0 0 1.6rem;}
-.sv-facts li{background:var(--paper-2);border-radius:999px;padding:.32rem .8rem;
-  font-weight:700;font-size:.76rem;color:var(--nori);}
+.sv-facts{list-style:none;display:flex;flex-wrap:wrap;gap:.6rem;padding:0;margin:0 0 1.8rem;}
+.sv-facts li{background:var(--paper-2);border-radius:999px;padding:.4rem .9rem;
+  font-weight:700;font-size:.8rem;color:var(--nori);}
 
-.sv-qmeta{font-weight:700;font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;
+.sv-qmeta{font-weight:700;font-size:.76rem;letter-spacing:.14em;text-transform:uppercase;
   color:var(--leaf-deep);margin:.2rem 0 .5rem;}
-.sv-qtitle{font-size:clamp(1.4rem,4.5vw,1.9rem);font-weight:700;line-height:1.15;
+.sv-qtitle{font-size:clamp(1.5rem,5vw,2.2rem);font-weight:700;line-height:1.18;
   color:var(--nori);margin:0 0 .5rem;outline:none;}
-.sv-hint{font-size:.95rem;color:#6a7663;margin:0 0 1.3rem;}
+.sv-hint{font-size:1rem;color:#6a7663;margin:0 0 1.4rem;}
 
 /* scale */
 .sv-scale{margin-top:.5rem;}
@@ -443,49 +515,49 @@ const styles = `
 .sv-scale-dot:hover{transform:translateY(-2px);}
 .sv-scale-dot.on{background:var(--citrus);border-color:var(--citrus);color:var(--nori-900);}
 .sv-scale-ends{display:flex;justify-content:space-between;margin-top:.6rem;
-  font-size:.8rem;color:#6a7663;font-weight:600;}
+  font-size:.85rem;color:#6a7663;font-weight:600;}
 
 /* single (stacked) */
-.sv-stack{display:flex;flex-direction:column;gap:.6rem;}
+.sv-stack{display:flex;flex-direction:column;gap:.7rem;}
 .sv-opt{text-align:left;background:#fff;border:2px solid rgba(22,58,43,.16);border-radius:12px;
-  padding:.95rem 1.1rem;font-size:1.02rem;font-weight:600;color:var(--ink);
+  padding:1rem 1.2rem;font-size:1.05rem;font-weight:600;color:var(--ink);
   transition:transform .1s ease,border-color .15s ease,background .15s ease;}
 .sv-opt:hover{transform:translateY(-2px);border-color:var(--leaf);}
 .sv-opt.on{border-color:var(--citrus);background:#fff7ea;}
 
 /* chips */
-.sv-chips{display:flex;flex-wrap:wrap;gap:.55rem;}
+.sv-chips{display:flex;flex-wrap:wrap;gap:.6rem;}
 .sv-chip{background:#fff;border:2px solid rgba(22,58,43,.16);border-radius:999px;
-  padding:.6rem .95rem;font-size:.96rem;font-weight:600;color:var(--ink);
+  padding:.65rem 1rem;font-size:1rem;font-weight:600;color:var(--ink);
   transition:transform .1s ease,border-color .15s ease,background .15s ease,color .15s ease;}
 .sv-chip:hover{transform:translateY(-2px);border-color:var(--leaf);}
 .sv-chip.on{background:var(--nori);border-color:var(--nori);color:var(--foam);}
 
 /* inputs */
 .sv-input,.sv-textarea{width:100%;background:#fff;border:2px solid rgba(22,58,43,.18);
-  border-radius:12px;padding:.85rem 1rem;font-family:inherit;font-size:1rem;color:var(--ink);
+  border-radius:12px;padding:.9rem 1.1rem;font-family:inherit;font-size:1rem;color:var(--ink);
   margin-top:.8rem;}
 .sv-input:focus,.sv-textarea:focus{outline:none;border-color:var(--citrus);}
 .sv-input.err{border-color:var(--tomato);}
 .sv-textarea{resize:vertical;}
-.sv-label{display:block;font-weight:700;font-size:.9rem;color:var(--nori);margin-top:1rem;}
+.sv-label{display:block;font-weight:700;font-size:.92rem;color:var(--nori);margin-top:1.1rem;}
 .sv-opt-tag{font-weight:500;color:#8a9683;font-size:.8rem;}
-.sv-err-msg{color:var(--tomato);font-size:.85rem;font-weight:600;margin:.4rem 0 0;}
-.sv-check{display:flex;gap:.6rem;align-items:flex-start;margin-top:1.1rem;
-  font-size:.92rem;color:#3d4a3f;cursor:pointer;}
+.sv-err-msg{color:var(--tomato);font-size:.88rem;font-weight:600;margin:.4rem 0 0;}
+.sv-check{display:flex;gap:.6rem;align-items:flex-start;margin-top:1.2rem;
+  font-size:.95rem;color:#3d4a3f;cursor:pointer;}
 .sv-check input{margin-top:.15rem;width:1.1rem;height:1.1rem;accent-color:var(--nori);}
 
 /* buttons */
-.sv-btn{border:none;font-weight:700;font-size:1rem;border-radius:12px;padding:.9rem 1.3rem;
+.sv-btn{border:none;font-weight:700;font-size:1rem;border-radius:12px;padding:.95rem 1.4rem;
   transition:transform .12s ease,box-shadow .2s ease;}
 .sv-btn:hover{transform:translateY(-2px);}
-.sv-btn-lg{font-size:1.08rem;padding:1.05rem 1.4rem;}
-.sv-btn-block{display:block;width:100%;margin-top:1.4rem;}
+.sv-btn-lg{font-size:1.1rem;padding:1.1rem 1.5rem;}
+.sv-btn-block{display:block;width:100%;margin-top:1.5rem;}
 .sv-btn-citrus{background:var(--citrus);color:var(--nori-900);box-shadow:0 5px 0 0 #c9832a;}
 .sv-btn-tomato{background:var(--tomato);color:var(--foam);box-shadow:0 5px 0 0 #b23a20;}
 .sv-btn-nori{background:var(--nori);color:var(--foam);box-shadow:0 5px 0 0 #0c2016;}
-.sv-back{display:block;margin:1.1rem auto 0;background:none;border:none;
-  color:#6a7663;font-weight:600;font-size:.9rem;padding:.4rem;}
+.sv-back{display:block;margin:1.2rem auto 0;background:none;border:none;
+  color:#6a7663;font-weight:600;font-size:.92rem;padding:.4rem;}
 .sv-back:hover{color:var(--nori);}
 
 /* done ticket */
@@ -518,8 +590,8 @@ const styles = `
 .sv-qr-cap{font-size:.85rem;color:#4b584a;margin:.7rem 0 0;}
 .sv-qr-cap b{color:var(--nori);letter-spacing:.06em;}
 
-.sv-foot{text-align:center;padding:1rem;font-size:.78rem;color:#8a9683;
-  border-top:1px solid rgba(22,58,43,.1);}
+.sv-foot{text-align:center;padding:1.2rem;font-size:.8rem;color:#8a9683;
+  border-top:1px solid rgba(22,58,43,.1);width:100%;box-sizing:border-box;}
 
 .sv-root :focus-visible{outline:3px solid var(--citrus);outline-offset:2px;}
 
