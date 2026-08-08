@@ -3,10 +3,12 @@ import React, { useState, useRef, useEffect } from "react";
 // survey.nori-market.shop — community menu survey
 const BRAND = "Nori's Market";
 
-// Set VITE_API_URL in Amplify (Environment variables) or a local .env file.
-const API_URL =
-  import.meta.env?.VITE_API_URL ||
-  "https://cms.nori-market.shop/wp-json/nori/v1/survey";
+// Base domain from env or fallback to WordPress CMS domain
+const BASE_URL = import.meta.env?.VITE_API_URL || "https://cms.nori-market.shop";
+// Ensure the REST API endpoint path is cleanly appended
+const API_URL = BASE_URL.includes("/wp-json/") 
+  ? BASE_URL 
+  : `${BASE_URL.replace(/\/$/, "")}/wp-json/nori/v1/survey`;
 
 // The page the QR opens when staff scan it (hosted on your WordPress domain).
 const STAFF_SCANNER_URL = "https://cms.nori-market.shop/staff-scanner.html";
