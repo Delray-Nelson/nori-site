@@ -189,17 +189,26 @@ export default function NoriSurvey() {
   async function submitResponses() {
     let gen = "NORI-" + Math.random().toString(36).slice(2, 6).toUpperCase();
     try {
+      console.log("Sending POST payload to:", API_URL);
+      console.log("Payload content:", { ...contact, hp: "", answers });
+
       const res = await fetch(API_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
         body: JSON.stringify({ ...contact, hp: "", answers }),
       });
-      if (res.ok) {
-        const data = await res.json();
-        if (data && data.code) gen = data.code;
+
+      const data = await res.json();
+      console.log("WordPress / Epos API Response:", data);
+
+      if (res.ok && data && (data.coupon_code || data.code)) {
+        gen = data.coupon_code || data.code;
       }
     } catch (e) {
-      // preview fallback
+      console.error("Network or fetch execution error:", e);
     }
     setCode(gen);
     next();
@@ -392,11 +401,21 @@ export default function NoriSurvey() {
               <span>Keep me posted on partner drops and specials.</span>
             </label>
 
-            <button className="sv-btn sv-btn-tomato sv-btn-block sv-btn-lg" onClick={() => {
-              const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.email.trim());
-              if (!ok) { setEmailErr("Please enter a valid email so we can send your ticket."); return; }
-              submitResponses();
-            }}>Get my 20% off ticket →</button>
+            <button 
+              type="button" 
+              className="sv-btn sv-btn-tomato sv-btn-block sv-btn-lg" 
+              onClick={(e) => {
+                e.preventDefault(); // <--- PREVENTS PAGE RELOAD / GET 404
+                const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.email.trim());
+                if (!ok) { 
+                  setEmailErr("Please enter a valid email so we can send your ticket."); 
+                  return; 
+                }
+                submitResponses();
+              }}
+            >
+              Get my 20% off ticket →
+            </button>
             <button className="sv-back" onClick={back}>← Back</button>
           </section>
         )}
