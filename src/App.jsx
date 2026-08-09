@@ -770,10 +770,12 @@ html,body{margin:0;padding:0;}
   animation:om-up .28s ease;}
 @keyframes om-up{from{transform:translateY(100%);}to{transform:translateY(0);}}
 @media (min-width:640px){
-  .om-overlay{align-items:center;padding:1rem;}
-  .om-sheet{max-width:460px;height:min(640px,82vh);border-radius:20px;animation:om-pop .2s ease;}
+  .om-overlay{align-items:stretch;justify-content:flex-end;padding:0;background:rgba(14,42,31,.38);}
+  .om-sheet{max-width:460px;width:100%;height:100vh;height:100dvh;border-radius:0;
+    box-shadow:-12px 0 44px rgba(0,0,0,.28);animation:om-slide .3s cubic-bezier(.22,1,.36,1);}
 }
 @keyframes om-pop{from{transform:scale(.96);opacity:0;}to{transform:scale(1);opacity:1;}}
+@keyframes om-slide{from{transform:translateX(100%);}to{transform:translateX(0);}}
 .om-head{flex:none;border-bottom:1px solid #eee;}
 .om-grip{display:block;width:40px;height:5px;border-radius:3px;background:#ddd;margin:.5rem auto 0;}
 @media (min-width:640px){.om-grip{display:none;}}
