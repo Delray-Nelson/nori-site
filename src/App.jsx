@@ -244,36 +244,305 @@ function Home({ go, onOrderNori, onOrderEmet }) {
   );
 }
 
+/* ------------------------------------- LIVE SHOP DATA (WooCommerce Store API) */
+const STORE_API = "https://cms.nori-market.shop/wp-json/wc/store/v1";
+
+// The Store API tracks a cart with a "Cart-Token" response header on the first
+// add. We keep it in a module var (not localStorage) and resend it every call.
+let NORI_CART_TOKEN = null;
+
+async function noriStoreFetch(path, { method = "GET", body } = {}) {
+  const headers = { "Content-Type": "application/json" };
+  if (NORI_CART_TOKEN) headers["Cart-Token"] = NORI_CART_TOKEN;
+  const res = await fetch(`${STORE_API}${path}`, {
+    method,
+    headers,
+    credentials: "include",
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const token = res.headers.get("Cart-Token");
+  if (token) NORI_CART_TOKEN = token;
+  if (!res.ok) {
+    let msg = `HTTP ${res.status}`;
+    try { const e = await res.json(); if (e && e.message) msg = e.message; } catch (_) {}
+    throw new Error(msg);
+  }
+  if (res.status === 204) return null;
+  return res.json();
+}
+
+// Store API prices are integer minor units as strings: "2140" => $21.40.
+function noriPrice(prices) {
+  if (!prices) return "";
+  const minor = parseInt(prices.currency_minor_unit ?? "2", 10);
+  const amount = parseInt(prices.price ?? "0", 10) / Math.pow(10, minor);
+  const symbol = prices.currency_prefix || "$";
+  return `${symbol}${amount.toFixed(minor)}`;
+}
+
+// Same, but returns a plain number (for cart math in the order modal).
+function noriPriceNum(prices) {
+  if (!prices) return 0;
+  const minor = parseInt(prices.currency_minor_unit ?? "2", 10);
+  return parseInt(prices.price ?? "0", 10) / Math.pow(10, minor);
+}
+
+// Normalize a live Store API product into the shape the OrderModal grid uses.
+function noriToMenuItem(p) {
+  const img = p.images && p.images[0];
+  return {
+    id: p.id,                         // numeric, unique (names can duplicate)
+    name: p.name,
+    price: noriPriceNum(p.prices),
+    img: img ? (img.src || img.thumbnail) : null,
+    inStock: p.is_in_stock !== false,
+  };
+}
+
 /* ---------------------------------------------------------------- SHOP */
 function Shop() {
-  const [cat, setCat] = useState("All");
-  const list = cat === "All" ? PRODUCTS : PRODUCTS.filter((p) => p.cat === cat);
+  const [state, setState] = useState({ loading: true, error: null, items: [] });
+  const [cart, setCart] = useState(null);
+  const [addingId, setAddingId] = useState(null);
+  const [notice, setNotice] = useState(null);
+  const [drawer, setDrawer] = useState(false);        // cart panel open?
+  const [view, setView] = useState("cart");           // "cart" | "checkout" | "done"
+  const [busyKey, setBusyKey] = useState(null);        // item key being updated
+  const [placing, setPlacing] = useState(false);
+  const [order, setOrder] = useState(null);
+  const [form, setForm] = useState({ first: "", last: "", email: "", phone: "" });
+  const [formErr, setFormErr] = useState(null);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const items = await noriStoreFetch("/products?per_page=100");
+        if (alive) setState({ loading: false, error: null, items });
+      } catch (e) {
+        if (alive) setState({ loading: false, error: e.message, items: [] });
+      }
+    })();
+    (async () => {
+      try { const c = await noriStoreFetch("/cart"); if (alive) setCart(c); } catch (_) {}
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  const addToCart = async (product) => {
+    setAddingId(product.id);
+    setNotice(null);
+    try {
+      const c = await noriStoreFetch("/cart/add-item", {
+        method: "POST",
+        body: { id: product.id, quantity: 1 },
+      });
+      setCart(c);
+      setNotice(`Added ${product.name}`);
+    } catch (e) {
+      setNotice(`Couldn't add: ${e.message}`);
+    } finally {
+      setAddingId(null);
+    }
+  };
+
+  // update quantity (0 removes). Store API uses a per-line "key".
+  const setQty = async (key, quantity) => {
+    setBusyKey(key);
+    try {
+      const c = quantity <= 0
+        ? await noriStoreFetch("/cart/remove-item", { method: "POST", body: { key } })
+        : await noriStoreFetch("/cart/update-item", { method: "POST", body: { key, quantity } });
+      setCart(c);
+    } catch (e) {
+      setNotice(`Couldn't update: ${e.message}`);
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const placeOrder = async () => {
+    setFormErr(null);
+    if (!form.first.trim() || !form.email.trim() || !form.phone.trim()) {
+      setFormErr("Name, email and phone are required.");
+      return;
+    }
+    setPlacing(true);
+    try {
+      // Pay-at-till: order is created as pending via the Cash-on-Delivery
+      // gateway (must be enabled in WooCommerce). No card is charged online.
+      const res = await noriStoreFetch("/checkout", {
+        method: "POST",
+        body: {
+          billing_address: {
+            first_name: form.first, last_name: form.last,
+            email: form.email, phone: form.phone,
+            country: "US",
+          },
+          payment_method: "cod",
+        },
+      });
+      setOrder(res);
+      setView("done");
+    } catch (e) {
+      setFormErr(e.message);
+    } finally {
+      setPlacing(false);
+    }
+  };
+
+  const { loading, error, items } = state;
+  const lines = cart && Array.isArray(cart.items) ? cart.items : [];
+  const cartCount = lines.reduce((n, it) => n + (it.quantity || 0), 0);
+  const cartTotal =
+    cart && cart.totals
+      ? noriPrice({ ...cart.totals, price: cart.totals.total_price })
+      : "";
+
+  const openCart = () => { setView("cart"); setDrawer(true); };
+
   return (
     <section className="page">
       <div className="wrap">
         <p className="eyebrow dark">The shop</p>
-        <h1 className="h2">Fresh goods & essentials</h1>
-        <p className="sub">Grocery, deli, bakery, and wellness — order by phone at {PHONE} or ask about mobile drop-off.</p>
+        <h1 className="h2">Fresh goods &amp; essentials</h1>
+        <p className="sub">
+          Browse the market below and build your basket. Orders are confirmed and
+          paid in store at the till — call {PHONE} with any questions.
+        </p>
 
-        <div className="tabs">
-          {CATS.map((c) => (
-            <button key={c} className={"tab" + (cat === c ? " on" : "")} onClick={() => setCat(c)}>{c}</button>
-          ))}
+        {/* live cart bar — click to open the basket */}
+        <div className="shop-cartbar">
+          <button className="shop-cartcount shop-cartbtn" onClick={openCart} disabled={!cartCount}>
+            🛒 {cartCount} item{cartCount === 1 ? "" : "s"}
+            {cartTotal ? ` · ${cartTotal}` : ""}
+            {cartCount ? " · View basket" : ""}
+          </button>
+          {notice && <span className="shop-notice">{notice}</span>}
         </div>
 
-        <div className="grid">
-          {list.map((p) => (
-            <article key={p.name} className={"card cat-" + p.cat.toLowerCase()}>
-              <span className="card-icon" aria-hidden>{p.icon}</span>
-              <h3 className="card-name">{p.name}</h3>
-              <div className="card-foot">
-                <span className="card-cat">{p.cat}</span>
-                <span className="card-price">${p.price.toFixed(2)}</span>
-              </div>
-            </article>
-          ))}
-        </div>
+        {loading && <p className="sub">Loading the market…</p>}
+        {error && (
+          <p className="sub" style={{ color: "var(--tomato)" }}>
+            Couldn’t load products: {error}
+          </p>
+        )}
+
+        {!loading && !error && (
+          <div className="grid">
+            {items.map((p) => {
+              const img = p.images && p.images[0];
+              const inStock = p.is_in_stock !== false;
+              return (
+                <article key={p.id} className="card">
+                  {img ? (
+                    <img
+                      className="shop-thumb"
+                      src={img.thumbnail || img.src}
+                      alt={img.alt || p.name}
+                      loading="lazy"
+                    />
+                  ) : (
+                    <span className="card-icon" aria-hidden>🧺</span>
+                  )}
+                  <h3 className="card-name">{p.name}</h3>
+                  <div className="card-foot">
+                    <span className="card-price">{noriPrice(p.prices)}</span>
+                    <button
+                      className="btn tomato shop-add"
+                      disabled={!inStock || addingId === p.id}
+                      onClick={() => addToCart(p)}
+                    >
+                      {!inStock ? "Sold out" : addingId === p.id ? "Adding…" : "Add"}
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
       </div>
+
+      {drawer && (
+        <div className="cd-overlay" onClick={() => setDrawer(false)}>
+          <aside className="cd-panel" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+            <div className="cd-head">
+              <h3 className="om-title">
+                {view === "cart" ? "Your basket" : view === "checkout" ? "Checkout" : "Order placed"}
+              </h3>
+              <button className="om-icon" onClick={() => setDrawer(false)} aria-label="Close">✕</button>
+            </div>
+
+            <div className="cd-body">
+              {view === "cart" && (
+                lines.length === 0 ? (
+                  <p className="sub">Your basket is empty.</p>
+                ) : (
+                  lines.map((it) => (
+                    <div key={it.key} className="cd-line">
+                      <div className="cd-line-main">
+                        <span className="cd-line-name">{it.name}</span>
+                        <span className="cd-line-price">
+                          {noriPrice({ ...it.prices, price: it.prices.price })}
+                        </span>
+                      </div>
+                      <div className="cd-qty">
+                        <button disabled={busyKey === it.key} onClick={() => setQty(it.key, it.quantity - 1)} aria-label="Remove one">−</button>
+                        <span>{it.quantity}</span>
+                        <button disabled={busyKey === it.key} onClick={() => setQty(it.key, it.quantity + 1)} aria-label="Add one">+</button>
+                      </div>
+                    </div>
+                  ))
+                )
+              )}
+
+              {view === "checkout" && (
+                <div className="cd-form">
+                  <p className="sub" style={{ marginBottom: ".8rem" }}>
+                    Pay in store at pickup — we’ll have your order ready.
+                  </p>
+                  <label className="cd-field"><span>First name *</span>
+                    <input value={form.first} onChange={(e) => setForm({ ...form, first: e.target.value })} /></label>
+                  <label className="cd-field"><span>Last name</span>
+                    <input value={form.last} onChange={(e) => setForm({ ...form, last: e.target.value })} /></label>
+                  <label className="cd-field"><span>Email *</span>
+                    <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></label>
+                  <label className="cd-field"><span>Phone *</span>
+                    <input type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></label>
+                  {formErr && <p className="cd-err">{formErr}</p>}
+                </div>
+              )}
+
+              {view === "done" && (
+                <div className="om-done">
+                  <div className="om-done-check" aria-hidden>✓</div>
+                  <h4>Order placed</h4>
+                  <p className="om-done-sub">
+                    {order && order.order_id ? `Order #${order.order_id}. ` : ""}
+                    We’ll have it ready — pay at the till on pickup.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="cd-foot">
+              {view === "cart" && (
+                <button className="om-cta" disabled={!lines.length} onClick={() => setView("checkout")}>
+                  Checkout · {cartTotal}
+                </button>
+              )}
+              {view === "checkout" && (
+                <button className="om-cta" disabled={placing} onClick={placeOrder}>
+                  {placing ? "Placing…" : `Place order · ${cartTotal}`}
+                </button>
+              )}
+              {view === "done" && (
+                <button className="om-cta" onClick={() => { setDrawer(false); setCart(null); }}>Done</button>
+              )}
+            </div>
+          </aside>
+        </div>
+      )}
     </section>
   );
 }
@@ -418,12 +687,37 @@ function OrderModal({ open, onClose, vendor }) {
   const [step, setStep] = useState("inventory");
   const [cart, setCart] = useState([]);
   const [slot, setSlot] = useState(null);
+  const [live, setLive] = useState({ loading: true, error: null, items: [] });
 
   useEffect(() => {
     if (open) { setStep("inventory"); setCart([]); setSlot(null); }
   }, [open]);
 
+  // Load the live WooCommerce catalog whenever the modal opens.
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    setLive({ loading: true, error: null, items: [] });
+    (async () => {
+      try {
+        const raw = await noriStoreFetch("/products?per_page=100");
+        const items = (raw || []).map(noriToMenuItem);
+        if (alive) setLive({ loading: false, error: null, items });
+      } catch (e) {
+        if (alive) setLive({ loading: false, error: e.message, items: [] });
+      }
+    })();
+    return () => { alive = false; };
+  }, [open]);
+
   if (!open || !vendor) return null;
+
+  // Live catalog replaces the static menu; static items are the fallback
+  // only if the API errors out (so the demo never shows an empty shelf).
+  const menuItems =
+    !live.loading && !live.error && live.items.length
+      ? live.items
+      : (live.error ? vendor.menu.map((m) => ({ ...m, id: m.name })) : []);
 
   const add = (p) => setCart((c) => c.some((i) => i.id === p.id)
     ? c.map((i) => (i.id === p.id ? { ...i, qty: i.qty + 1 } : i))
@@ -452,22 +746,37 @@ function OrderModal({ open, onClose, vendor }) {
         <div className="om-body">
           {step === "inventory" && (
             <div className="om-shop">
-              <p className="om-collection">Shop the $6 menu</p>
+              <p className="om-collection">
+                {live.loading ? "Loading the market…"
+                  : live.error ? "Featured menu"
+                  : "Shop the full market"}
+              </p>
+
+              {live.loading && <p className="om-empty">Fetching fresh stock…</p>}
+              {!live.loading && !menuItems.length && (
+                <p className="om-empty">Nothing in stock right now — check back soon.</p>
+              )}
+
               <div className="om-grid">
-                {vendor.menu.map((p) => {
-                  const inC = cart.find((i) => i.id === p.name);
+                {menuItems.map((p) => {
+                  const inC = cart.find((i) => i.id === p.id);
+                  const soldOut = p.inStock === false;
                   return (
-                    <div key={p.name} className="om-card">
+                    <div key={p.id} className="om-card">
                       <div className="om-photo">
-                        <img src={p.img} alt={p.name} />
-                        {inC ? (
+                        {p.img
+                          ? <img src={p.img} alt={p.name} loading="lazy" />
+                          : <div className="om-photo-ph" aria-hidden>🧺</div>}
+                        {soldOut ? (
+                          <span className="om-soldout">Sold out</span>
+                        ) : inC ? (
                           <div className="om-qtyfloat">
-                            <button onClick={() => dec(p.name)} aria-label="Remove one">−</button>
+                            <button onClick={() => dec(p.id)} aria-label="Remove one">−</button>
                             <span>{inC.qty}</span>
-                            <button onClick={() => inc(p.name)} aria-label="Add one">+</button>
+                            <button onClick={() => inc(p.id)} aria-label="Add one">+</button>
                           </div>
                         ) : (
-                          <button className="om-plus" onClick={() => add({ id: p.name, name: p.name, price: p.price })} aria-label={"Add " + p.name}>+</button>
+                          <button className="om-plus" onClick={() => add({ id: p.id, name: p.name, price: p.price })} aria-label={"Add " + p.name}>+</button>
                         )}
                       </div>
                       <div className="om-card-info">
@@ -701,6 +1010,29 @@ html,body{margin:0;padding:0;}
 .card-foot{display:flex;justify-content:space-between;align-items:baseline;border-top:1px dashed rgba(22,58,43,.18);padding-top:.6rem;}
 .card-cat{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:#93a08d;font-weight:700;}
 .card-price{font-family:var(--display);font-weight:800;font-size:1.3rem;color:var(--nori);}
+.shop-cartbar{display:flex;align-items:center;gap:1rem;flex-wrap:wrap;margin:1.4rem 0 .4rem;font-weight:700;color:var(--nori);}
+.shop-cartcount{background:rgba(22,58,43,.06);border:1px solid rgba(22,58,43,.12);border-radius:999px;padding:.4rem .9rem;}
+.shop-notice{font-weight:600;color:var(--leaf-deep);}
+.shop-thumb{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:6px;display:block;margin-bottom:.2rem;}
+.card .shop-add{padding:.4rem .9rem;font-size:.85rem;box-shadow:0 3px 0 0 #b23a20;}
+.card .shop-add:disabled{opacity:.55;cursor:not-allowed;transform:none;}
+.shop-cartbtn{cursor:pointer;border:1px solid rgba(22,58,43,.12);}
+.shop-cartbtn:disabled{cursor:default;opacity:.7;}
+.cd-overlay{position:fixed;inset:0;z-index:120;background:rgba(14,42,31,.38);display:flex;justify-content:flex-end;}
+.cd-panel{width:min(420px,100%);background:var(--paper);display:flex;flex-direction:column;box-shadow:-8px 0 30px rgba(0,0,0,.2);}
+.cd-head{display:flex;align-items:center;justify-content:space-between;padding:1rem 1.2rem;border-bottom:1px solid rgba(22,58,43,.1);}
+.cd-body{flex:1;overflow-y:auto;padding:1.2rem;}
+.cd-line{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.7rem 0;border-bottom:1px dashed rgba(22,58,43,.15);}
+.cd-line-main{display:flex;flex-direction:column;gap:.2rem;}
+.cd-line-name{font-weight:700;color:var(--nori);}
+.cd-line-price{color:#5f8a2a;font-weight:700;}
+.cd-qty{display:flex;align-items:center;gap:.6rem;}
+.cd-qty button{width:30px;height:30px;border-radius:50%;border:1px solid rgba(22,58,43,.2);background:#fff;font-size:1.1rem;cursor:pointer;color:var(--nori);}
+.cd-qty button:disabled{opacity:.5;cursor:not-allowed;}
+.cd-field{display:flex;flex-direction:column;gap:.3rem;margin-bottom:.8rem;font-weight:600;color:var(--nori);font-size:.9rem;}
+.cd-field input{padding:.6rem .7rem;border:1px solid rgba(22,58,43,.2);border-radius:8px;font:inherit;}
+.cd-err{color:var(--tomato);font-weight:600;margin:.2rem 0 0;}
+.cd-foot{padding:1rem 1.2rem;border-top:1px solid rgba(22,58,43,.1);}
 
 /* services */
 .svc-grid{grid-template-columns:repeat(3,1fr);}
@@ -798,6 +1130,9 @@ html,body{margin:0;padding:0;}
 .om-qty span{min-width:1.2rem;text-align:center;font-weight:700;}
 .om-shop{padding:1rem;}
 .om-collection{margin:0 0 .8rem;font-weight:800;font-size:1.05rem;color:var(--nori);}
+.om-empty{margin:.2rem 0 1rem;color:#6b7669;font-size:.95rem;}
+.om-photo-ph{font-size:2.2rem;opacity:.5;}
+.om-soldout{position:absolute;right:.5rem;bottom:.5rem;background:rgba(22,58,43,.9);color:#fff;font-size:.72rem;font-weight:700;padding:.25rem .5rem;border-radius:999px;}
 .om-grid{display:grid;grid-template-columns:1fr 1fr;gap:.8rem;}
 .om-card{background:#fff;border:1px solid #ececec;border-radius:16px;overflow:hidden;}
 .om-photo{position:relative;aspect-ratio:1;background:#f5f5f1;display:flex;align-items:center;justify-content:center;padding:.5rem;}
